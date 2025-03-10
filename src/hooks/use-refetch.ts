@@ -1,14 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 
 const useRefetch = () => {
-    const queryClient = useQueryClient();
-    const refetch = async () => {
-        await queryClient.refetchQueries({
-            type: "active",
-        });
-    };
+  const queryClient = useQueryClient();
 
-    return refetch;
+  return async () => {
+    await queryClient.refetchQueries({
+      type: "active",
+    });
+  };
 };
 
 export default useRefetch;

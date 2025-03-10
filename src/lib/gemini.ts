@@ -1,63 +1,118 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Document } from "@langchain/core/documents";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
-export const aiCommitSummary = async (diff: string): Promise<string> => {
-    const promptData = {
-        instructions: `Review the following GitHub code diff and generate a concise, high-level summary focusing on the key changes:
-    
-    Prioritize the following aspects:
-    1. Any new features or functionality introduced
-    2. Significant structural alterations, including refactorings
-    3. Modifications to dependencies, such as new additions or removals
-    4. Changes to the database schema or related models
-    
-    Your response should:
-    - Be a bulleted list with each item on a separate line
-    - Provide clear, actionable insights in each bullet point, using one sentence per item
-    - Avoid including minor changes such as formatting adjustments, comment updates, or variable name changes
-    - Exclude details that do not impact the functionality or architecture of the code
-    
-    Ensure that the summary is comprehensive yet brief, capturing only the essential changes that affect the code's behavior, performance, or maintainability.`,
-        diff: diff
-    };
+const model = genAI.getGenerativeModel({
+  model: "gemini-1.5-pro",
+});
 
-    const prompt = JSON.stringify(promptData);
-    const response = await model.generateContent([prompt]);
-    return response.response.text();
+export const aiSummariseCommit = async (diff: string) => {
+  //github.com/owner/repo/commit/commitHash.diff
+  const response = await model.generateContent([
+    `You are a master at programming and you are trying to summarize a git diff. 
+    Reminders about the git diff format: 
+    For every file, there are two metadata lines like (for example): 
+    \'\'\'
+    diff --git a/lib/index.js b/lib/index.js
+    index aadf691...bfef603 100844
+    --- a/lib/index.js
+    +++ b/lib/index.js
+    \'\'\'
+    This means that 'lib/index.js' was modified in this commit. Note that this is only an example.
+    Then there is a specifier of the lines that were modified.
+    A line starting with '+' means it was added.
+    A line starting with '-' means that the line was deleted.
+    A line that starts with neither '+' nor '-' is code given for context and better understanding.
+    It ]is not the part of the diff.
+    EXAMPLE SUMMARY CONTENTS:
+    \'\'\'
+    * Raised the amount of returned recordings from \'10\' to \'100\' [packages/server/recordings_api.ts], [packages/server/constants.ts]
+    * Fixed a typo in the github action name [.github/workflows.gpt-commit-summarizer.yml]
+    * Moved the \'octokit\' initialization to a separate file [src/octokit.ts] [src/index.ts]
+    * Added an OpenAI API for completions [packages/utils/apis/openai.ts]
+    * Lowered numiric tolerence for test files
+    \'\'\'
+    Most commits will have less comments than this examples list.
+    The last comment does not include the file names,
+    because there were more than two relevant files in the hypothetical commit.
+    Do no include parts of the examples in your summary.
+    It is given only as an example of appropriate comments.`,
+    `Please summarise the following diff files: \n\n${diff}`,
+  ]);
+  return response.response.text();
 };
 
 export async function summariseCode(doc: Document) {
-    console.log("Summarising code for ", doc?.metadata?.source);
-    const code = doc?.pageContent?.slice(0, 10000);
-    try {
-        const response = await model.generateContent([
-            `You are a super intelligent senior software development engineer at a top tech company.
-             You specialize in onboarding junior software engineers onto projects.
-             You are onboarding a junior software engineer onto a project and you need to explain the purpose of the ${doc?.metadata?.source} file.
-             Here is the code of the ${doc?.metadata?.source} file:
-             ---
-                ${code}
-             ---
-    
-             Give a summary in not more than 100 words for the code above.
-             `
-        ]);
-
-        return response.response.text();
-    } catch (error) {
-        console.error("Error generating summary:", error);
-        return "";
-    }
+  console.log("Getting summary for", doc.metadata.source);
+  try {
+    const code = doc.pageContent.slice(0, 10000);
+    const response = await model.generateContent([
+      `You are an intelligent senior software engineer who specializes in onboarding junior software engineers onto projects.`,
+      `You are onboarding a junior software engineer and explaining to them the purpose of the ${doc.metadata.source} file.
+      Here is the code:
+      ---
+      ${code}
+      ---
+      Give a summary in no more than 100 words of the code above`,
+    ]);
+    return response.response.text();
+  } catch (err) {
+    console.error(`Error summarizing ${doc.metadata.source}:`, err);
+    return null;
+  }
 }
 
+// const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// export const summariseCode = async (doc: Document) => {
+//   const maxRetries = 2;
+//   const backoffMs = 2000; // 2 seconds base delay
+
+//   for (let i = 0; i < maxRetries; i++) {
+//     try {
+//       const code = doc.pageContent.slice(0, 10000);
+//       const response = await model.generateContent([
+//         `You are an intelligent senior software engineer who specializes in onboarding junior software engineers onto projects.`,
+//         `You are onboarding a junior software engineer and explaining to them the purpose of the ${doc.metadata.source} file.
+//         Here is the code:
+//         ---
+//         ${code}
+//         ---
+//         Give a summary in no more than 100 words of the code above`,
+//       ]);
+//       return response.response.text();
+//     } catch (err: any) {
+//       if (err?.status === 429) {
+//         const waitTime = backoffMs * Math.pow(2, i);
+//         console.log(`Rate limited, waiting ${waitTime}ms before retry...`);
+//         await delay(waitTime);
+//         continue;
+//       }
+//       console.error(`Failed for ${doc.metadata.source}:`, err);
+//       return null;
+//     }
+//   }
+//   return null;
+// };
+
 export async function generateEmbedding(summary: string) {
-    const model = genAI.getGenerativeModel({
-        model: "text-embedding-004"
-    });
-    const result = await model.embedContent(summary);
-    const embedding = result.embedding;
-    return embedding.values;
-};
+  const model = genAI.getGenerativeModel({
+    model: "text-embedding-004",
+  });
+  const result = await model.embedContent(summary); //generate vector representation of the summary
+  const embedding = result.embedding;
+  return embedding.values;
+}
+// export const generateEmbedding = async (summary: string | null) => {
+//   if (!summary) return null;
+
+//   try {
+//     const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+//     const result = await model.embedContent(summary);
+//     return result.embedding.values;
+//   } catch (err) {
+//     console.error("Error generating embedding:", err);
+//     return null;
+//   }
+// };

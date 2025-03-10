@@ -1,88 +1,120 @@
 "use client";
 
-import { useState } from "react";
-import { FileIcon, IndianRupee, Info } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-
-import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
+import { Card } from "@/components/ui/card";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { loadStripe } from "@stripe/stripe-js";
 
-const BillingPage = () => {
-  const { data: user } = api.project.getCredits.useQuery();
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [creditsToBuy, setCreditsToBuy] = useState<number[]>([100]);
-  const creditsToBuyAmount = creditsToBuy[0]!;
-  const price = creditsToBuyAmount * 2;
-  const router = useRouter();
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-  const handlePayment = async () => {
-    setIsProcessing(true);
+const plans = [
+  {
+    id: "basic",
+    name: "Basic Plan",
+    price: "$10",
+    features: [
+      "10 Projects",
+      "Basic Git Integration",
+      "Community Support",
+      "Core Features",
+    ],
+  },
+  {
+    id: "pro",
+    name: "Pro Plan",
+    price: "$29",
+    features: [
+      "Unlimited Projects",
+      "Advanced Git Integration",
+      "Priority Support",
+      "All Features",
+      "API Access",
+      "Custom Integrations",
+    ],
+  },
+];
 
+export default function BillingPage() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState<string | null>(null);
+
+  const handleSubscribe = async (planId: string) => {
     try {
+      setLoading(planId);
       const response = await fetch("/api/create-order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ amount: price, credits: creditsToBuyAmount }),
+        body: JSON.stringify({ planId }),
       });
+
       const data = await response.json();
 
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        toast.error("Payment failed. Please try again.");
+      if (!response.ok) {
+        throw new Error(data.error || "Something went wrong");
       }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
     } catch (error) {
-      console.error("Payment Failed", error);
-      toast.error("Payment failed. Please try again.");
+      console.error("Error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to initiate checkout. Please try again.",
+        variant: "destructive",
+      });
     } finally {
-      setIsProcessing(false);
+      setLoading(null);
     }
   };
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold">Billing</h1>
-      <div className="h-2"></div>
-      <p className="text-sm text-gray-500">
-        You currently have {user?.credits} credits left.
-      </p>
-      <div className="h-2"></div>
-      <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-blue-700">
-        <div className="flex items-center gap-2">
-          <Info className="size-4" />
-          <p className="text-sm">Each credit allows you to index 1 file.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <FileIcon className="size-3" />
-          <p className="text-xs">
-            <strong>E.g.</strong> if your project has 70 files you would need 70
-            credits.
-          </p>
-        </div>
+    <div className="container mx-auto py-8">
+      <h1 className="mb-8 text-center text-3xl font-bold">Choose Your Plan</h1>
+      <div className="grid gap-8 md:grid-cols-2 lg:gap-12">
+        {plans.map((plan) => (
+          <Card key={plan.id} className="p-6">
+            <div className="text-center">
+              <h2 className="mb-2 text-2xl font-bold">{plan.name}</h2>
+              <p className="mb-4 text-3xl font-bold text-primary">
+                {plan.price}
+                <span className="text-sm text-muted-foreground">/month</span>
+              </p>
+            </div>
+            <div className="my-4">
+              <ul className="space-y-2">
+                {plan.features.map((feature, index) => (
+                  <li key={index} className="flex items-center">
+                    <svg
+                      className="mr-2 h-5 w-5 text-green-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <Button
+              className="mt-6 w-full"
+              onClick={() => handleSubscribe(plan.id)}
+              disabled={!!loading}
+            >
+              {loading === plan.id ? "Processing..." : "Subscribe"}
+            </Button>
+          </Card>
+        ))}
       </div>
-      <div className="h-4"></div>
-      <Slider
-        defaultValue={[100]}
-        max={1000}
-        min={10}
-        step={10}
-        onValueChange={(value) => setCreditsToBuy(value)}
-        className="cursor-pointer"
-      />
-      <div className="h-4"></div>
-      <Button onClick={handlePayment} disabled={isProcessing}>
-        {isProcessing ? "Processing..." : `Buy ${creditsToBuyAmount} credits for `}
-        <span className="flex items-center">
-          <IndianRupee size={16} className="mr-1" />
-          {price.toFixed(2)}
-        </span>
-      </Button>
     </div>
   );
-};
-
-export default BillingPage;
+}

@@ -3,74 +3,66 @@
 import { streamText } from "ai";
 import { createStreamableValue } from "ai/rsc";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-
 import { generateEmbedding } from "@/lib/gemini";
 import { db } from "@/server/db";
 
 const google = createGoogleGenerativeAI({
-    apiKey: process.env.GEMINI_API_KEY,
+  apiKey: process.env.GEMINI_API_KEY,
 });
 
 export async function askQuestion(question: string, projectId: string) {
-    const stream = createStreamableValue();
+  const stream = createStreamableValue();
 
-    const queryVector = await generateEmbedding(question);
-    const vectorQuery = `[${queryVector.join(",")}]`;
+  const queryVector = await generateEmbedding(question);
+  const vectorQuery = `[${queryVector!.join(",")}]`;
 
-    const result = await db.$queryRaw`
-        SELECT "fileName", "sourceCode", "summary",
-        1 - ("summaryEmbedding" <=> ${vectorQuery}::vector) AS similarity
-        FROM "SourceCodeEmbedding"
-        WHERE 1 - ("summaryEmbedding" <=> ${vectorQuery}::vector) > 0.5
-        AND "projectId" = ${projectId}
-        ORDER BY similarity DESC
-        LIMIT 5
-    ` as { fileName: string, sourceCode: string, summary: string, }[];
+  const result = (await db.$queryRaw`
+  SELECT "fileName", "sourceCode", "summary",
+  1 - ("summaryEmbedding" <=> ${vectorQuery}::vector) AS similarity
+  FROM "SourceCodeEmbedding"
+  WHERE 1 - ("summaryEmbedding" <=> ${vectorQuery}::vector) > .5
+  AND "projectId" = ${projectId}
+  ORDER BY similarity DESC
+  LIMIT 10`) as { fileName: string; sourceCode: string; summary: string }[];
 
-    let context = "";
+  let context = "";
 
-    for (const doc of result) {
-        context += `source: ${doc.fileName}\ncode content: ${doc.summary}\nsummary of file: ${doc.sourceCode}\n\n`;
+  for (const doc of result) {
+    context += `source: ${doc.fileName}\ncode content: ${doc.sourceCode}\nsummary: ${doc.summary}\n\n`;
+  }
+
+  (async () => {
+    const { textStream } = streamText({
+      model: google("gemini-1.5-flash"),
+      prompt: `
+            You are an ai code assistant who answers question about the codebase. Your target audience is a technical intern who is looking to understand the codebase.
+            AI assistant is a brand new, powerful, human-like artificial intelligence. The traits of AI include expert knowledge, helofulness, cleverness and articulateness.
+            AI is a well-behaved and well-mannered individual.
+            AI is always friendly, kind and insipiring and he iseager to provide vivid and thoughtful response to the user.
+            AI has the sum of all knowledge in their brain and he is able to accurately answer nearly any question about any topic in conversation.
+            If the question is asking about the code or a specific file, AI will provide the detailed answer, giving step by step instructions, inclusding code snippets.
+            START CONTEXT BLOCK
+            ${context}
+            END OF CONTEXT BLOCK
+
+            START QUESTION
+            ${question}
+            END OF QUESTION
+            AI assistant will take into account any CONTEXT BLOCK that is provided in a conversation.
+            If the context does not provide the answer to the question, the AI assistant will say, "I'm sorry, but I dont't know the answer to this question."
+            AI assistant will not apologize for the previous responses. but instead will indicate the new information that was gained.
+            AI assistant will not invent anything that is is not drawn directly from the context.
+            Answer is markdown syntax, with code snippets if needed. Be as detailed as possible while answering, but do not provide any information that is not in the context.`,
+    });
+    for await (const delta of textStream) {
+      stream.update(delta);
     }
 
-    (async () => {
-        const { textStream } = await streamText({
-            model: google('gemini-1.5-flash'),
-            prompt: `
-                You are a AI coding assistant that answers questions about code base. You need to provide a detailed explanation of the code snippet that answers the question.
-                Your target audience is a techincal intern who is new to the project.
-                AI coding assistant is a brand new, powerful, superhuman AI that can understand code.
-                The traits of AI include expert knowledge, helpfulness, cleverless, and articulateness.
-                AI is a well behaved, friendly, and helpful assistant.
-                AI is eager to provide vivid and thoughtful answers to the users.
-                AI is an expert in the field of software engineering and can accurately answer nearly any any question about any topic related to coding.
-                If the question is asking about code or a specific file, AI will provide a detailed answer, giving step by step instructions and explanations.
-                START CONTEXT BLOCK
-                ${context}
-                END CONTEXT BLOCK
+    stream.done();
+  })();
 
-                START QUESTION BLOCK
-                ${question}
-                END QUESTION BLOCK
-
-                AI assitant will take into account the CONTEXT BLOCK and QUESTION BLOCK to provide a detailed answer.
-                If the context not provide answer to the question, AI will say "I'm Sorry, but I cannot generate an answer for this question.".
-                AI assistant will not apologize for previous responses, but instead will induce a new information from the question and generate better answer.
-                AI assistant will not invent anything that is not directly drawn from the context block.
-                Answer in markdown format, with code snippets if needed.
-                Be as detailed as possible while answering.
-            `
-        });
-
-        for await (const delta of textStream) {
-            stream.update(delta);
-        }
-
-        stream.done();
-    })();
-
-    return {
-        output: stream.value,
-        fileReferences: result,
-    };
+  return {
+    output: stream.value,
+    filesReferences: result,
+  };
 }

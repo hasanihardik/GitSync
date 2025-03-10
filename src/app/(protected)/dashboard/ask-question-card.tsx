@@ -1,16 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
-import { DownloadIcon} from "lucide-react";
-import { toast } from "sonner";
-import { readStreamableValue } from "ai/rsc";
-import Image from "next/image";
 import MDEditor from "@uiw/react-md-editor";
-
-import useGetProjects from "@/hooks/use-get-projects";
-import useRefetch from "@/hooks/use-refetch";
-import { api } from "@/trpc/react";
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -20,69 +10,69 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-
+import { useProject } from "@/hooks/use-project";
+import Image from "next/image";
+import React from "react";
 import { askQuestion } from "./actions";
+import { readStreamableValue } from "ai/rsc";
 import CodeReferences from "./code-references";
-
-import "./ask-question-card.css";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
+import useRefetch from "@/hooks/use-refetch";
 
 const AskQuestionCard = () => {
-  const { project } = useGetProjects();
-  const [question, setQuestion] = useState("");
-  const [submittedQuestion, setSubmittedQuestion] = useState(question);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [fileReferences, setFileReferences] = useState<
+  const { project } = useProject();
+  const [question, setQuestion] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [filesReferences, setFilesReferences] = React.useState<
     { fileName: string; sourceCode: string; summary: string }[]
   >([]);
-  const [answer, setAnswer] = useState("");
-  const saveAnswer = api.project.saveAnswer.useMutation();
-  const refetch = useRefetch();
+  const [answer, setAnswer] = React.useState("");
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const saveAnswer = api.project.saveAnswer.useMutation();
+
+  const onSubmit = async (e: React.FormEvent) => {
     setAnswer("");
-    setFileReferences([]);
-    e.preventDefault();
+    setFilesReferences([]);
     if (!project?.id) return;
+    e.preventDefault();
     setLoading(true);
 
-    const { output, fileReferences } = await askQuestion(question, project.id);
+    const { output, filesReferences } = await askQuestion(question, project.id);
     setOpen(true);
-    setFileReferences(fileReferences);
+    setFilesReferences(filesReferences);
+    // setLoading(false);
+
     for await (const delta of readStreamableValue(output)) {
       if (delta) {
         setAnswer((ans) => ans + delta);
       }
     }
-    setSubmittedQuestion(question);
-    setQuestion("");
     setLoading(false);
   };
+
+  const refetch = useRefetch();
 
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="h-full sm:max-w-[70vw]">
+        <DialogContent className="sm:!max-w-[70vw]">
           <DialogHeader>
             <div className="flex items-center gap-2">
               <DialogTitle>
-                <Image
-                  src={"/GitSyncLogo.png"}
-                  alt="GitSync"
-                  width={40}
-                  height={40}
-                />
+                <Image src="/elevate.png" alt="Logo" width={40} height={40} />
               </DialogTitle>
               <Button
+                disabled={saveAnswer.isPending}
                 variant={"outline"}
-                onClick={() =>
-                  saveAnswer.mutate(
-                    {
-                      projectId: project!.id,
-                      question: submittedQuestion,
-                      answer,
-                      fileReferences,
-                    },
+                onClick={() => {
+                  saveAnswer.mutate({
+                    projectId: project!.id,
+                    question,
+                    answer,
+                    filesReferences,
+                  }),
                     {
                       onSuccess: () => {
                         toast.success("Answer saved successfully");
@@ -91,34 +81,21 @@ const AskQuestionCard = () => {
                       onError: () => {
                         toast.error("Failed to save answer");
                       },
-                    },
-                  )
-                }
-                disabled={saveAnswer.isPending}
+                    };
+                }}
               >
-                <DownloadIcon className="size-4 mr-1" />
                 Save Answer
               </Button>
             </div>
           </DialogHeader>
+
           <MDEditor.Markdown
             source={answer}
-            disableCopy={false}
-            className="h-full max-h-[40vh] max-w-[70vw] overflow-scroll bg-transparent text-gray-800 dark:text-gray-100"
-            style={{
-              backgroundColor: "transparent",
-              color: "inherit",
-              maxWidth: "70vw",
-              height: "100%",
-              maxHeight: "40vh",
-              overflowY: "scroll",
-              overflowX: "visible",
-              wordBreak: "break-word",
-            }}
+            className="!h-full max-h-[40vh] max-w-[70vw] overflow-scroll"
           />
-          {fileReferences.length && (
-            <CodeReferences fileReferences={fileReferences} />
-          )}
+          <div className="h-4"></div>
+          <CodeReferences filesReferences={filesReferences} />
+
           <Button
             type="button"
             onClick={() => {
@@ -131,19 +108,21 @@ const AskQuestionCard = () => {
       </Dialog>
       <Card className="relative col-span-3">
         <CardHeader>
-          <CardTitle>Ask a question</CardTitle>
-          <p className="text-xs text-muted-foreground">GitSync has knowledge of the codebase.</p>
+          <CardTitle>Ask a Question</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit}>
             <Textarea
-              placeholder="Which file should I edit to change the home page?"
+              placeholder="Which file should I edit to change the Home Page?"
               value={question}
-              onChange={(e) => setQuestion(e.target.value)}
+              className="h-[10vh]"
+              onChange={(e) => {
+                setQuestion(e.target.value);
+              }}
             />
-            <div className="h-4" />
+            <div className="h-4"></div>
             <Button type="submit" disabled={loading}>
-              Ask GitSync AI
+              ASK GitSync
             </Button>
           </form>
         </CardContent>

@@ -1,71 +1,67 @@
-import { NextResponse } from "next/server";
+import { getAuth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getServerSession } from "next-auth";
-import { db } from "@/server/db";
 
-export async function POST(req: Request) {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2025-02-24.acacia",
+  typescript: true,
+});
+
+const plans = {
+  basic: {
+    price: "price_1R15CRP2KC9pMyNmDZ66UJ2H", // Monthly $10 plan
+    name: "Basic Plan",
+    description: "Basic access to GitSync features",
+  },
+  pro: {
+    price: "price_1R15ClP2KC9pMyNmRSuntmL7", // Monthly $29 plan
+    name: "Pro Plan",
+    description: "Full access to all GitSync features",
+  },
+} as const;
+
+export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession();
-    
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    const body = await req.json();
-    const { amount, credits } = body;
+    const { planId } = await req.json();
+    const plan = plans[planId as keyof typeof plans];
 
-    if (!amount || !credits) {
+    if (!plan) {
       return NextResponse.json(
-        { error: "Amount and credits are required" },
+        { error: "Invalid plan selected" },
         { status: 400 }
       );
     }
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2025-02-24.acacia",
-    });
-
-    // Fetch user for metadata
-    const user = await db.user.findUnique({
-      where: {
-        emailAddress: session.user.email,
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // Create Stripe checkout session
-    const stripeSession = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+    const session = await stripe.checkout.sessions.create({
+      // Email will be collected during checkout
       line_items: [
         {
-          price_data: {
-            currency: "inr",
-            product_data: {
-              name: `${credits} Credits`,
-              description: `Purchase of ${credits} credits for file indexing`,
-            },
-            unit_amount: amount * 100, // Convert to paise (Stripe requires smallest currency unit)
-          },
+          price: plan.price,
           quantity: 1,
         },
       ],
-      mode: "payment",
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?payment=cancelled`,
+      mode: "subscription",
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?canceled=true`,
       metadata: {
-        userId: user.id,
-        credits: credits.toString(),
+        userId: userId,
+        planId: planId,
       },
     });
 
-    return NextResponse.json({ url: stripeSession.url });
-  } catch (error) {
-    console.error("Error creating checkout session:", error);
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    console.error("Error creating checkout session:", err);
     return NextResponse.json(
-      { error: "Failed to create checkout session" },
+      { error: "Error creating checkout session" },
       { status: 500 }
     );
   }

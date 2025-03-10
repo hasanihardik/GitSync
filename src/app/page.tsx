@@ -1,15 +1,24 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+"use client";
 
-export default async function Home() {
-  const user = await auth();
-  if (!user) {
-    return (
-      <div className="h-full w-full flex items-center justify-center">
-        <h1>Log in to see this page</h1>
-      </div>
-    );
-  }
+import React, { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-  redirect("/dashboard");
+export default function page() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.push("/sync-user");
+  }, [router]);
 }
+
+// import React from 'react'
+
+// const page = () => {
+//   return (
+//     <div>
+//       ...
+//     </div>
+//   )
+// }
+
+//export default page

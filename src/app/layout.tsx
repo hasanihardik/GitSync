@@ -1,18 +1,16 @@
 import "@/styles/globals.css";
-
 import { ClerkProvider } from "@clerk/nextjs";
+
 import { GeistSans } from "geist/font/sans";
-import { Toaster } from "sonner";
 import { type Metadata } from "next";
 
 import { TRPCReactProvider } from "@/trpc/react";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "GitSync",
-  description: "A perfect sync of git and meet.",
-  icons: [
-    { rel: "icon", url: "/gitsync_base_logo.svg" },
-  ],
+  title: "Git Sync",
+  description: "Github SAAS",
+  icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
 export default function RootLayout({
@@ -23,7 +21,7 @@ export default function RootLayout({
       <html lang="en" className={`${GeistSans.variable}`}>
         <body>
           <TRPCReactProvider>{children}</TRPCReactProvider>
-          <Toaster richColors />
+          <Toaster richColors/>
         </body>
       </html>
     </ClerkProvider>

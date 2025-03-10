@@ -1,34 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import React from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-
+import { atomDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type Props = {
-  fileReferences: {
-    fileName: string;
-    sourceCode: string;
-    summary: string;
-  }[];
+type CodeReferencesProps = {
+  filesReferences: { fileName: string; sourceCode: string; summary: string }[];
 };
 
-const CodeReferences = ({ fileReferences }: Props) => {
-  const [tab, setTab] = useState(fileReferences[0]?.fileName);
-  if (!fileReferences.length) return null;
+const CodeReferences = ({ filesReferences }: CodeReferencesProps) => {
+  const [tab, setTab] = React.useState(filesReferences[0]?.fileName);
+
+  if (filesReferences.length === 0) return null;
 
   return (
-    <div className="w-full max-w-[70vw]">
+    <div className="min-w-full">
       <Tabs value={tab} onValueChange={setTab}>
-        <div className="flex gap-2 overflow-auto rounded-md bg-gray-200 p-1">
-          {fileReferences.map((file) => (
+        <div className="flex gap-2 overflow-scroll rounded-md bg-gray-200 p-1">
+          {filesReferences.map((file) => (
             <button
               onClick={() => setTab(file.fileName)}
               key={file.fileName}
               className={cn(
-                "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-muted",
+                "transition-colours hover:background-muted whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground",
                 {
                   "bg-primary text-primary-foreground": tab === file.fileName,
                 },
@@ -38,13 +34,13 @@ const CodeReferences = ({ fileReferences }: Props) => {
             </button>
           ))}
         </div>
-        {fileReferences.map((file) => (
+        {filesReferences.map((file) => (
           <TabsContent
             key={file.fileName}
             value={file.fileName}
-            className="max-h-[40vh] w-full max-w-[70vw] overflow-auto rounded-md"
+            className="max-h-[35vh] max-w-7xl overflow-scroll rounded-md"
           >
-            <SyntaxHighlighter language="javascript" style={vscDarkPlus}>
+            <SyntaxHighlighter language="typescript" style={atomDark}>
               {file.sourceCode}
             </SyntaxHighlighter>
           </TabsContent>

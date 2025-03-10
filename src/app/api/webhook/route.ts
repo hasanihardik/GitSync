@@ -1,10 +1,10 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { db } from "@/server/db";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
+  typescript: true,
 });
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -12,57 +12,42 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 export async function POST(req: Request) {
   try {
     const body = await req.text();
-    const headersList = await headers();
-    const signature = headersList.get("stripe-signature")!;
+    const headersList = headers();
+    const signature = (await headersList).get("Stripe-Signature") as string;
 
     let event: Stripe.Event;
 
     try {
-      event = stripe.webhooks.constructEvent(
-        body,
-        signature,
-        webhookSecret
-      );
+      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
     } catch (err) {
-      console.error("Webhook signature verification failed:", err);
       return NextResponse.json(
-        { error: "Webhook signature verification failed" },
+        { error: `Webhook signature verification failed` },
         { status: 400 }
       );
     }
 
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.userId;
-      const credits = parseInt(session.metadata?.credits || "0");
+    switch (event.type) {
+      case "checkout.session.completed":
+        const checkoutSession = event.data.object as Stripe.Checkout.Session;
+        // Handle successful payment
+        // You can update user's subscription status here
+        break;
 
-      if (userId && credits) {
-        // Update user credits in database
-        await db.user.update({
-          where: { id: userId },
-          data: {
-            credits: {
-              increment: credits
-            }
-          }
-        });
+      case "payment_intent.succeeded":
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        // Handle successful payment
+        break;
 
-        console.log(`Added ${credits} credits to user ${userId}`);
-      }
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
     }
 
     return NextResponse.json({ received: true });
-  } catch (error) {
-    console.error("Error processing webhook:", error);
+  } catch (err) {
+    console.error("Webhook error:", err);
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 }
     );
   }
 }
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
