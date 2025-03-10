@@ -1,0 +1,12 @@
+.wmde-markdown pre > code {
+  padding: 16px;
+  overflow: auto;
+  display: block;
+  background: #e5e5e5;
+  color: #1e1e1e;
+}
+
+.dark .wmde-markdown pre > code {
+  background: #1e1e1e;
+  color: #e5e5e5;
+}
