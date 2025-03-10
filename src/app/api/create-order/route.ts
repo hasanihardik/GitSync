@@ -1,49 +1,72 @@
-import { NextRequest, NextResponse } from "next/server";
-import Razorpay from "razorpay";
-import { auth } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import Stripe from "stripe";
+import { getServerSession } from "next-auth";
 import { db } from "@/server/db";
 
-const razorpay = new Razorpay({
-	key_id: process.env.RAZORPAY_API_KEY_ID!,
-	key_secret: process.env.RAZORPAY_API_KEY_SECRET!,
-});
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession();
+    
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-export async function POST(request: NextRequest) {
-	try {
-		const { amount, credits } = await request.json();
-		const authUser = await auth();
+    const body = await req.json();
+    const { amount, credits } = body;
 
-		if (!authUser.userId) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
+    if (!amount || !credits) {
+      return NextResponse.json(
+        { error: "Amount and credits are required" },
+        { status: 400 }
+      );
+    }
 
-		const order = await razorpay.orders.create({
-			amount: amount * 100,
-			currency: "INR",
-			receipt: "gitSync_" + Math.random().toString(36).substring(7),
-		});
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: "2025-02-24.acacia",
+    });
 
-		await db.razorpayTransaction.create({
-			data: {
-				userId: authUser.userId,
-				credits,
-			},
-		});
+    // Fetch user for metadata
+    const user = await db.user.findUnique({
+      where: {
+        emailAddress: session.user.email,
+      },
+    });
 
-		await db.user.update({
-			where: {
-				id: authUser.userId,
-			},
-			data: {
-				credits: {
-					increment: credits,
-				},
-			},
-		});
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
-		return NextResponse.json({ orderId: order.id }, { status: 200 });
-	} catch (error) {
-		console.error("Error creating order: ", error);
-		return NextResponse.json({ error: "Error creating order" }, { status: 500 });
-	}
+    // Create Stripe checkout session
+    const stripeSession = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "inr",
+            product_data: {
+              name: `${credits} Credits`,
+              description: `Purchase of ${credits} credits for file indexing`,
+            },
+            unit_amount: amount * 100, // Convert to paise (Stripe requires smallest currency unit)
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?payment=cancelled`,
+      metadata: {
+        userId: user.id,
+        credits: credits.toString(),
+      },
+    });
+
+    return NextResponse.json({ url: stripeSession.url });
+  } catch (error) {
+    console.error("Error creating checkout session:", error);
+    return NextResponse.json(
+      { error: "Failed to create checkout session" },
+      { status: 500 }
+    );
+  }
 }

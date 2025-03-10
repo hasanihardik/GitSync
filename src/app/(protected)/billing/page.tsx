@@ -2,19 +2,12 @@
 
 import { useState } from "react";
 import { FileIcon, IndianRupee, Info } from "lucide-react";
-import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
 
 const BillingPage = () => {
   const { data: user } = api.project.getCredits.useQuery();
@@ -37,32 +30,13 @@ const BillingPage = () => {
       });
       const data = await response.json();
 
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_API_KEY_ID!,
-        amount: price * 100,
-        currency: "INR",
-        name: "HARSH JAIN",
-        description: "You are paying for GitSync AI credits.",
-        order_id: data.orderId,
-        handler: function (response: any) {
-          toast.success("Payment successful!");
-          router.push("/dashboard");
-          console.log(response);
-        },
-        prefill: {
-          name: `${user?.firstName} ${user?.lastName}`,
-          email: user?.emailAddress,
-          contact: "",
-        },
-        theme: {
-          color: "#3399cc",
-        },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.open();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error("Payment failed. Please try again.");
+      }
     } catch (error) {
-      console.error("Payment Failed");
+      console.error("Payment Failed", error);
       toast.error("Payment failed. Please try again.");
     } finally {
       setIsProcessing(false);
@@ -71,7 +45,6 @@ const BillingPage = () => {
 
   return (
     <div>
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" />
       <h1 className="text-xl font-semibold">Billing</h1>
       <div className="h-2"></div>
       <p className="text-sm text-gray-500">
